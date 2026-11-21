@@ -1,1 +1,75 @@
+name: Build Android APK
 
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Tipe build APK'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Prepare web assets and Capacitor config
+        run: |
+          mkdir -p www
+          cp index.html manifest.json icon.svg sw.js www/
+          npm init -y
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "com.catatuang.app",
+            "appName": "CatatUang",
+            "webDir": "www",
+            "server": {
+              "androidScheme": "https"
+            }
+          }
+          EOF
+          npx cap add android
+
+      - name: Build APK
+        run: |
+          cd android
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            ./gradlew assembleRelease --no-daemon
+          else
+            ./gradlew assembleDebug --no-daemon
+          fi
+
+      - name: Upload Debug APK Artifact
+        if: github.event.inputs.build_type != 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CatatUang-APK-Debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload Release APK Artifact
+        if: github.event.inputs.build_type == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CatatUang-APK-Release
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
